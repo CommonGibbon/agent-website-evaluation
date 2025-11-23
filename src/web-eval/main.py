@@ -22,7 +22,10 @@ def main():
         # Define JSON output path
         log_path = os.path.join(log_dir, f"{persona.id}.json")
         
-        with PlaywrightComputer(initial_url=target_url) as computer:
+        # Configure computer based on persona's device preference
+        device_type = persona.context_of_visit.device
+        
+        with PlaywrightComputer(initial_url=target_url, device_type=device_type) as computer:
             agent = BrowserAgent(computer, objective, persona, log_path)
             agent.start()
 

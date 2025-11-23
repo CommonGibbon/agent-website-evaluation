@@ -1,9 +1,9 @@
-from persona_models import ContextOfVisit, Persona
+from persona_models import ContextOfVisit, Persona, DeviceType
 
 SARAH_KIM_CONTEXT = ContextOfVisit(
     scenario="Researching diaper subscription options during her lunch break at work",
     entry_point="Instagram ad promoting 'never run out of diapers again'",
-    device="mobile",
+    device=DeviceType.MOBILE,
     time_pressure="medium",
     emotional_state="focused but time-constrained",
 )

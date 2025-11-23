@@ -1,20 +1,21 @@
 import time
 import os
 import sys
-from typing import Literal
+from typing import Literal, Optional
 import playwright.sync_api
 from playwright.sync_api import sync_playwright
 import pydantic
+from persona_models import DeviceType
 
 class EnvState(pydantic.BaseModel):
     screenshot: bytes
     url: str
 
 class PlaywrightComputer:
-    def __init__(self, screen_size=(1024, 768), initial_url="about:blank", highlight_mouse=True):
-        self.screen_size = screen_size
+    def __init__(self, initial_url="about:blank", highlight_mouse=True, device_type: DeviceType = DeviceType.DESKTOP):
         self.initial_url = initial_url
         self.highlight_mouse_enabled = highlight_mouse
+        self.device_type = device_type
         self._playwright = None
         self._browser = None
         self._page = None
@@ -22,7 +23,20 @@ class PlaywrightComputer:
     def __enter__(self):
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.launch(headless=False)
-        self._context = self._browser.new_context(viewport={"width": self.screen_size[0], "height": self.screen_size[1]})
+        
+        if self.device_type == DeviceType.MOBILE:
+            # Hard-coding mobile phone choice for now - could make this a configurable test variable
+            device_config = self._playwright.devices['iPhone 13']
+
+            # Extract width and height from the device config
+            self.screen_size = (device_config['viewport']['width'], device_config['viewport']['height'])
+
+            self._context = self._browser.new_context(**device_config)
+        else: 
+            # Hard-coding desktop screen size for now - could make this a configurable test variable
+            self.screen_size = (1024, 768)
+            self._context = self._browser.new_context(viewport={"width": self.screen_size[0], "height": self.screen_size[1]}) 
+            
         self._page = self._context.new_page()
         self._page.goto(self.initial_url)
         return self

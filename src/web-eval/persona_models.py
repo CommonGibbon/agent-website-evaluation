@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from enum import Enum
 from dataclasses import dataclass
+
+class DeviceType(str, Enum):
+    MOBILE = "mobile"
+    DESKTOP = "desktop"
 
 @dataclass(frozen=True)
 class ContextOfVisit:
@@ -12,7 +17,7 @@ class ContextOfVisit:
     """
     scenario: str
     entry_point: str
-    device: str
+    device: DeviceType
     time_pressure: str
     emotional_state: str
 
