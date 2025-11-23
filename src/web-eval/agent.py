@@ -5,16 +5,32 @@ from google.genai import types
 from rich.console import Console
 from rich.table import Table
 from computer import PlaywrightComputer, EnvState
+from persona_models import ContextOfVisit, Persona
 
 class BrowserAgent:
-    def __init__(self, computer: PlaywrightComputer, query: str):
+    def __init__(self, computer: PlaywrightComputer, objective: str, persona: Persona):
         self.computer = computer
-        self.query = query
+        self.objective = objective
         self.client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-        self.history = [types.Content(role="user", parts=[types.Part(text=query)])]
-        
+        self.history = [
+            types.Content(role="user", parts=[
+                types.Part(text=self._build_prompt_block(persona))
+            ])
+        ]
+
+    def _build_prompt_block(self, persona: Persona) -> str:
+        prompt = f"""
+        {persona.build_prompt_block()} \n
+        You are currently {persona.context_of_visit.scenario} and you have arrived at this website through {persona.context_of_visit.entry_point}.
+        You are feeling {persona.context_of_visit.emotional_state}, with {persona.context_of_visit.time_pressure} time pressure.
+        You are using a {persona.context_of_visit.device} device.
+        Your ultimate objective is to {self.objective}
+        """
+
+        return prompt 
+
     def start(self):
-        print(f"Goal: {self.query}")
+        print(f"Goal: {self.objective}")
         while True:
             # 1. Ask Gemini what to do next
             response = self.client.models.generate_content(

@@ -39,6 +39,6 @@ SARAH_KIM = Persona(
     context_of_visit=SARAH_KIM_CONTEXT,
 )
 
-PERSONA_REGISTRY = {
+persona_registry = {
     SARAH_KIM.id: SARAH_KIM,
 }
