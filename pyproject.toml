@@ -1,0 +1,38 @@
+[project]
+name = "bluepill-web-eval"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "CommonGibbon",email = "xenoproboscizoid@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.13,<4.0"
+dependencies = [
+    "playwright (>=1.56.0,<2.0.0)",
+    "pydantic (>=2.12.4,<3.0.0)",
+    "rich (>=14.2.0,<15.0.0)",
+    "termcolor (>=3.2.0,<4.0.0)",
+    "google-adk (>=1.19.0,<2.0.0)",
+    "google-genai (>=1.52.0,<2.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+jupyterlab = "^4.4.10"
+ipykernel = "^7.1.0"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.poetry]
+packages = [
+  { include = "web-eval", from = "src" },
+]
+

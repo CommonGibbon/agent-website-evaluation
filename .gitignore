@@ -1,0 +1,13 @@
+.env
+
+.venv
+
+AGENTS.md
+
+notebooks/
+
+__pycache__/
+
+.DS_Store
+
+logs/
