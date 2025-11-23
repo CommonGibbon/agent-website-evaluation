@@ -1,5 +1,6 @@
 import os
 import time
+import json
 from google import genai
 from google.genai import types
 from rich.console import Console
@@ -8,15 +9,20 @@ from computer import PlaywrightComputer, EnvState
 from persona_models import ContextOfVisit, Persona
 
 class BrowserAgent:
-    def __init__(self, computer: PlaywrightComputer, objective: str, persona: Persona):
+    def __init__(self, computer: PlaywrightComputer, objective: str, persona: Persona, log_path: str):
         self.computer = computer
         self.objective = objective
+        self.log_path = log_path
         self.client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+        self.prompt = self._build_prompt_block(persona)
         self.history = [
             types.Content(role="user", parts=[
-                types.Part(text=self._build_prompt_block(persona))
+                types.Part(text=self.prompt)
             ])
         ]
+        self.action_log = []
+        self.step_count = 0
+        self.start_time = time.time()
 
     def _build_prompt_block(self, persona: Persona) -> str:
         prompt = f"""
@@ -30,49 +36,68 @@ class BrowserAgent:
         return prompt 
 
     def start(self):
-        print(f"Goal: {self.objective}")
-        while True:
-            # 1. Ask Gemini what to do next
-            response = self.client.models.generate_content(
-                model='gemini-2.5-computer-use-preview-10-2025', 
-                contents=self.history,
-                config=types.GenerateContentConfig(
-                    tools=[types.Tool(computer_use=types.ComputerUse(environment=types.Environment.ENVIRONMENT_BROWSER))]
+        try:
+            while True:
+                self.step_count += 1
+                # 1. Ask Gemini what to do next
+                response = self.client.models.generate_content(
+                    model='gemini-2.5-computer-use-preview-10-2025', 
+                    contents=self.history,
+                    config=types.GenerateContentConfig(
+                        tools=[types.Tool(computer_use=types.ComputerUse(environment=types.Environment.ENVIRONMENT_BROWSER))]
+                    )
                 )
-            )
 
-            # 2. Process Response
-            candidate = response.candidates[0]
-            self.history.append(candidate.content) # Add model thought to history
-            
-            # Print reasoning (Thinking out loud)
-            for part in candidate.content.parts:
-                if part.text: print(f"[AI Thought]: {part.text}")
-
-            # 3. Execute Tool Calls
-            function_calls = [p.function_call for p in candidate.content.parts if p.function_call]
-            if not function_calls:
-                print("Task Complete or No Action Taken.")
-                break
-
-            function_responses = []
-            for call in function_calls:
-                print(f"[Action]: {call.name} {call.args}")
-                result = self._execute_action(call)
+                # 2. Process Response
+                candidate = response.candidates[0]
+                self.history.append(candidate.content) # Add model thought to history
                 
-                # Format result for Gemini
-                function_responses.append(types.FunctionResponse(
-                    name=call.name,
-                    response={"url": result.url} if isinstance(result, EnvState) else result,
-                    parts=[types.FunctionResponsePart(inline_data=types.FunctionResponseBlob(
-                        mime_type="image/png", data=result.screenshot
-                    ))] if isinstance(result, EnvState) else []
-                ))
+                # Print reasoning (Thinking out loud)
+                for part in candidate.content.parts:
+                    if part.text: self.action_log.append(f"[AI Thought]: {part.text}")
 
-            # 4. Feed results back to Gemini
-            self.history.append(types.Content(role="user", parts=[
-                types.Part(function_response=fr) for fr in function_responses
-            ]))
+                # 3. Execute Tool Calls
+                function_calls = [p.function_call for p in candidate.content.parts if p.function_call]
+                if not function_calls:
+                    self.action_log.append("Task Complete or No Action Taken.")
+                    break
+
+                function_responses = []
+                for call in function_calls:
+                    self.action_log.append(f"[Action]: {call.name} {call.args}")
+                    result = self._execute_action(call)
+                    
+                    # Format result for Gemini
+                    function_responses.append(types.FunctionResponse(
+                        name=call.name,
+                        response={"url": result.url} if isinstance(result, EnvState) else result,
+                        parts=[types.FunctionResponsePart(inline_data=types.FunctionResponseBlob(
+                            mime_type="image/png", data=result.screenshot
+                        ))] if isinstance(result, EnvState) else []
+                    ))
+
+                # 4. Feed results back to Gemini
+                self.history.append(types.Content(role="user", parts=[
+                    types.Part(function_response=fr) for fr in function_responses
+                ]))
+        finally:
+            self._save_logs()
+
+    def _save_logs(self):
+        duration = time.time() - self.start_time
+        log_data = {
+            "goal": self.objective,
+            "prompt": self.prompt,
+            "action_list": self.action_log,
+            "total_time": round(duration, 2),
+            "total_steps": self.step_count
+        }
+        
+        try:
+            with open(self.log_path, 'w') as f:
+                json.dump(log_data, f, indent=2)
+        except Exception as e:
+            print(f"Failed to save logs: {e}")
 
     def _execute_action(self, call):
         name = call.name

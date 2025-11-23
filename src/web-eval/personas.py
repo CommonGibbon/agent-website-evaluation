@@ -9,7 +9,7 @@ SARAH_KIM_CONTEXT = ContextOfVisit(
 )
 
 SARAH_KIM = Persona(
-    id="sarah_kim_subscription_savvy",
+    id="sarah_kim",
     display_name="Sarah Kim – The Subscription-Savvy Affluent New Parent (Age 31)",
     profile=(
         "Sarah is a 31-year-old marketing manager living in Seattle with her husband, "
