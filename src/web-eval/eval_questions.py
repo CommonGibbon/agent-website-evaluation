@@ -1,0 +1,9 @@
+
+from typing import List
+
+# Sample evaluation questions
+eval_questions: List[str] = [
+    "How satisfied were you with thhe overall website experience?",
+    "How likely are you to purchase products from this website again?",
+    "Were there any pain points in your shopping exerience? If so, what were they?"
+]

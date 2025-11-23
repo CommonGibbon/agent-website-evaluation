@@ -4,6 +4,7 @@ from datetime import datetime
 from computer import PlaywrightComputer
 from agent import BrowserAgent
 from personas import persona_registry
+from eval_questions import eval_questions
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -26,7 +27,7 @@ def main():
         device_type = persona.context_of_visit.device
         
         with PlaywrightComputer(initial_url=target_url, device_type=device_type) as computer:
-            agent = BrowserAgent(computer, objective, persona, log_path)
+            agent = BrowserAgent(computer, objective, persona, log_path, eval_questions=eval_questions)
             agent.start()
 
 if __name__ == "__main__":

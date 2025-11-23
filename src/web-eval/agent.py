@@ -9,10 +9,11 @@ from computer import PlaywrightComputer, EnvState
 from persona_models import ContextOfVisit, Persona
 
 class BrowserAgent:
-    def __init__(self, computer: PlaywrightComputer, objective: str, persona: Persona, log_path: str):
+    def __init__(self, computer: PlaywrightComputer, objective: str, persona: Persona, log_path: str, eval_questions: list[str] = None):
         self.computer = computer
         self.objective = objective
         self.log_path = log_path
+        self.eval_questions = eval_questions or []
         self.client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
         self.prompt = self._build_prompt_block(persona)
         self.history = [
@@ -21,6 +22,7 @@ class BrowserAgent:
             ])
         ]
         self.action_log = []
+        self.feedback_log = []
         self.step_count = 0
         self.start_time = time.time()
 
@@ -80,8 +82,58 @@ class BrowserAgent:
                 self.history.append(types.Content(role="user", parts=[
                     types.Part(function_response=fr) for fr in function_responses
                 ]))
+            
+            # 5. Run Evaluation
+            self._run_evaluation()
         finally:
             self._save_logs()
+
+    def _run_evaluation(self):
+        """
+        Runs the post-task evaluation by asking the agent the configured questions.
+        """
+        if not self.eval_questions:
+            return
+
+        self.action_log.append("[System]: Starting Post-Task Evaluation")
+        
+        for question in self.eval_questions:
+            # Add the question to the history as a user prompt
+            question_content = types.Content(role="user", parts=[
+                types.Part(text=f"EVALUATION PHASE: {question}")
+            ])
+            self.history.append(question_content)
+            
+            # Create filtered history for evaluation (text only, no tools/images)
+            filtered_history = []
+            for content in self.history:
+                filtered_parts = []
+                for part in content.parts:
+                    if part.text:
+                        filtered_parts.append(types.Part(text=part.text))
+                
+                if filtered_parts:
+                    filtered_history.append(types.Content(role=content.role, parts=filtered_parts))
+
+            # Ask Gemini for the answer (text only, no tools needed)
+            response = self.client.models.generate_content(
+                model='gemini-2.5-flash', 
+                contents=filtered_history
+            )
+            
+            answer_candidate = response.candidates[0]
+            answer_text = "".join([p.text for p in answer_candidate.content.parts if p.text])
+            
+            # Save the Q&A
+            self.feedback_log.append({
+                "question": question,
+                "answer": answer_text
+            })
+            
+            # Add answer to history to maintain context
+            self.history.append(answer_candidate.content)
+            self.action_log.append(f"[Evaluation Q]: {question}")
+            self.action_log.append(f"[Evaluation A]: {answer_text}")
 
     def _save_logs(self):
         duration = time.time() - self.start_time
@@ -89,6 +141,7 @@ class BrowserAgent:
             "goal": self.objective,
             "prompt": self.prompt,
             "action_list": self.action_log,
+            "feedback": self.feedback_log,
             "total_time": round(duration, 2),
             "total_steps": self.step_count
         }
