@@ -1,4 +1,6 @@
 import sys
+import csv
+import os
 from typing import Dict
 from rich.console import Console
 from rich.table import Table
@@ -39,6 +41,38 @@ def print_results_table(all_scores: Dict[str, Dict[str, float]]):
 
     console.print(table)
 
+def export_results_csv(all_scores: Dict[str, Dict[str, float]], output_dir: str = "report_data", filename: str = "realism_eval.csv"):
+    """
+    Exports the evaluation results to a CSV file.
+    """
+    # Ensure output directory exists
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    filepath = os.path.join(output_dir, filename)
+    
+    # Collect all unique persona IDs
+    all_personas = set()
+    for m_scores in all_scores.values():
+        all_personas.update(m_scores.keys())
+    
+    with open(filepath, mode='w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.writer(csvfile)
+        
+        # Header: Persona, followed by each metric name
+        header = ["Persona"] + [metric_config.name for metric_config in METRIC_REGISTRY]
+        writer.writerow(header)
+        
+        # Rows
+        for persona_id in sorted(all_personas):
+            row = [str(persona_id)]
+            for metric_config in METRIC_REGISTRY:
+                score = all_scores.get(metric_config.name, {}).get(persona_id, "N/A")
+                row.append(score) 
+            writer.writerow(row)
+            
+    print(f"Results exported to {filepath}")
+
 def main():
     if len(sys.argv) > 1:
         log_dir = sys.argv[1]
@@ -61,6 +95,7 @@ def main():
 
         print("\n")
         print_results_table(all_results)
+        export_results_csv(all_results)
         
     else:
         print("Usage: python run_evaluation.py <path_to_log_directory>")
