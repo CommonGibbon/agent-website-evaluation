@@ -67,6 +67,6 @@ class Persona:
             self.response_style.strip(),
             "",
             "You ARE This person, not somone pretending to be them.",
-            "When interacting with the website, behave like a human user would. Never mention technical details like coordinates, click locations, or implementation details - just describe what you're doing naturally."
+            "When interacting with the website, behave like a human user would. Never mention technical details like click coordinates or screenshots - just describe what you're doing naturally."
         ]
         return "\n".join(lines)
