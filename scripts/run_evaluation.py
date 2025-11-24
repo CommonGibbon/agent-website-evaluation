@@ -1,35 +1,41 @@
 import sys
-from web_eval.evaluation.loader import load_eval_cases
-from web_eval.evaluation.metrics import psychographics_match, eval_framework_match, context_match
+from typing import Dict
 from rich.console import Console
 from rich.table import Table
+
+from web_eval.evaluation.loader import load_eval_cases
+from web_eval.evaluation.metrics import run_metric_eval
+from web_eval.config.metrics import METRIC_REGISTRY
 
 from dotenv import load_dotenv
 load_dotenv()
 
-def print_results_table(psycho_scores, eval_scores, context_scores):
+def print_results_table(all_scores: Dict[str, Dict[str, float]]):
+    """
+    all_scores structure: { metric_name: { persona_id: score } }
+    """
     console = Console()
     table = Table(title="Evaluation Results")
 
+    # Columns
     table.add_column("Persona", style="cyan", no_wrap=True)
-    table.add_column("Psychographics", justify="right", style="magenta")
-    table.add_column("Eval Framework", justify="right", style="green")
-    table.add_column("Context", justify="right", style="yellow")
+    for metric_config in METRIC_REGISTRY:
+        table.add_column(metric_config.name, justify="right")
 
-    # Get all unique personas
-    all_personas = sorted(set(psycho_scores.keys()) | set(eval_scores.keys()) | set(context_scores.keys()))
-
-    for persona in all_personas:
-        p_score = psycho_scores.get(persona, "N/A")
-        e_score = eval_scores.get(persona, "N/A")
-        c_score = context_scores.get(persona, "N/A")
+    # Rows
+    # Collect all unique persona IDs found in any of the results
+    all_personas = set()
+    for m_scores in all_scores.values():
+        all_personas.update(m_scores.keys())
+    
+    for persona_id in sorted(all_personas):
+        row_data = [str(persona_id)]
+        for metric_config in METRIC_REGISTRY:
+            score = all_scores.get(metric_config.name, {}).get(persona_id, "N/A")
+            formatted_score = f"{score:.2f}" if isinstance(score, (int, float)) else str(score)
+            row_data.append(formatted_score)
         
-        table.add_row(
-            str(persona), 
-            f"{p_score:.2f}" if isinstance(p_score, (int, float)) else str(p_score),
-            f"{e_score:.2f}" if isinstance(e_score, (int, float)) else str(e_score),
-            f"{c_score:.2f}" if isinstance(c_score, (int, float)) else str(c_score)
-        )
+        table.add_row(*row_data)
 
     console.print(table)
 
@@ -45,20 +51,19 @@ def main():
 
         print(f"Found {len(cases)} cases. Starting evaluation...\n")
 
-        # 1. Psychographics
-        psycho_scores = psychographics_match(cases)
-        
-        # 2. Evaluation Framework
-        eval_scores = eval_framework_match(cases)
-        
-        # 3. Context
-        context_scores = context_match(cases)
-        
+        # Dictionary to store results: { metric_name: { persona_id: score } }
+        all_results = {}
+
+        # Dynamically run all metrics in the registry
+        for metric_config in METRIC_REGISTRY:
+            scores = run_metric_eval(cases, metric_config)
+            all_results[metric_config.name] = scores
+
         print("\n")
-        print_results_table(psycho_scores, eval_scores, context_scores)
+        print_results_table(all_results)
         
     else:
-        print("Usage: python run_eval.py <path_to_log_directory>")
+        print("Usage: python run_evaluation.py <path_to_log_directory>")
 
 if __name__ == "__main__":
     main()

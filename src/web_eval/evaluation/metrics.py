@@ -1,16 +1,13 @@
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Tuple, Any
 import os
-from google import genai
-from web_eval.evaluation.loader import EvalCase, load_eval_cases
-from web_eval.models.personas import ContextOfVisit, Persona
 import random
-from typing import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
-try:
-    from rich.progress import Progress
-except ImportError:
-    Progress = None
+from google import genai
+
+from web_eval.evaluation.loader import EvalCase
+from web_eval.models.metrics import MetricConfig
+from rich.progress import Progress
 
 def _evaluate_contrastive_match(actual_output: str, profile_a: str, profile_b: str, criteria_name: str) -> str:
     """
@@ -70,14 +67,14 @@ def _process_single_comparison(
     actual_output: str,
     target_profile: str,
     distractor_case: EvalCase,
-    profile_builder: Callable[[Persona], str],
-    metric_name: str
+    config: MetricConfig
 ) -> Tuple[str, bool, str]:
     """
     Helper function to run a single comparison.
     Returns (target_id, is_correct, distractor_id).
     """
-    distractor_profile = profile_builder(distractor_case.persona)
+    # Render the distractor profile using the config template
+    distractor_profile = config.template.format(persona=distractor_case.persona)
     
     # Randomize order
     is_target_a = random.choice([True, False])
@@ -95,35 +92,31 @@ def _process_single_comparison(
         actual_output=actual_output,
         profile_a=profile_a,
         profile_b=profile_b,
-        criteria_name=metric_name
+        criteria_name=config.name
     )
     
     return target_id, (choice == correct_option), distractor_case.persona.id
 
 
-def run_contrastive_eval_loop(
-    cases: List[EvalCase], 
-    profile_builder: Callable[[Persona], str], 
-    metric_name: str
-) -> Dict[str, float]:
+def run_metric_eval(cases: List[EvalCase], config: MetricConfig) -> Dict[str, float]:
     """
     Generic engine for contrastive evaluation.
     Iterates through every agent (target) and compares them against every other agent (distractor).
     Uses the provided profile_builder to generate the "Expected Profile" text.
     """
     scores = {}
-    print(f"\n--- Running {metric_name} Evaluation ---")
+    print(f"\n--- Running {config.name} ---")
     
     # Pre-compute target data
     target_data = {}
     for case in cases:
         actual_output = "\n".join(case.log_data.get('action_list', []))
         for feedback in case.log_data.get('feedback', []):
-             actual_output += f"\nQ: {feedback['question']}\nA: {feedback['answer']}"
+            actual_output += f"\nQ: {feedback['question']}\nA: {feedback['answer']}"
         
         target_data[case.persona.id] = {
             "actual_output": actual_output,
-            "profile": profile_builder(case.persona)
+            "profile": config.template.format(persona=case.persona)
         }
         
     results_agg = defaultdict(lambda: {"correct": 0, "total": 0})
@@ -143,22 +136,17 @@ def run_contrastive_eval_loop(
                 "actual_output": t_data["actual_output"],
                 "target_profile": t_data["profile"],
                 "distractor_case": distractor_case,
-                "profile_builder": profile_builder,
-                "metric_name": metric_name
+                "config": config
             })
 
     # Execute in parallel
     # Using max_workers=10 to respect potential rate limits, adjust as needed
     with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = [
-            executor.submit(_process_single_comparison, **task) 
-            for task in tasks
-        ]
+        futures = [executor.submit(_process_single_comparison, **task) for task in tasks]
         
         if Progress:
             with Progress() as progress:
-                task_id = progress.add_task(f"[cyan]{metric_name}...", total=len(futures))
-                
+                task_id = progress.add_task(f"[cyan]{config.name}...", total=len(futures)) 
                 for future in as_completed(futures):
                     try:
                         t_id, is_correct, d_id = future.result()
@@ -192,52 +180,3 @@ def run_contrastive_eval_loop(
             scores[t_id] = 0.0
             
     return scores
-
-# --- Psychographics Metric ---
-
-def _build_psychographics_profile(persona: Persona) -> str:
-    return f"""
-    Psychographics: {persona.psychographics}
-    """
-
-def psychographics_match(cases: List[EvalCase]) -> Dict[str, float]:
-    return run_contrastive_eval_loop(
-        cases=cases,
-        profile_builder=_build_psychographics_profile,
-        metric_name="Psychographics Alignment"
-    )
-
-
-# --- Evaluation Framework Metric ---
-
-def _build_eval_framework_profile(persona: Persona) -> str:
-    return f"""
-    Evaluation Framework: {persona.evaluation_framework}
-    """
-
-def eval_framework_match(cases: List[EvalCase]) -> Dict[str, float]:
-    return run_contrastive_eval_loop(
-        cases=cases,
-        profile_builder=_build_eval_framework_profile,
-        metric_name="Evaluation Framework Alignment"
-    )
-
-
-# --- Context of Visit Metric ---
-
-def _build_context_profile(persona: Persona) -> str:
-    ctx = persona.context_of_visit
-    return f"""
-    Scenario: {ctx.scenario}
-    Entry Point: {ctx.entry_point}
-    Time Pressure: {ctx.time_pressure}
-    Emotional State: {ctx.emotional_state}
-    Device: {ctx.device}
-    """
-
-def context_match(cases: List[EvalCase]) -> Dict[str, float]:
-    return run_contrastive_eval_loop(
-        cases=cases,
-        profile_builder=_build_context_profile,
-        metric_name="Context of Visit Alignment"
-    )
