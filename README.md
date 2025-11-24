@@ -1,4 +1,4 @@
-# BluePill Web Eval
+# Agentic Web Eval
 
 A framework for simulating and evaluating the realism of AI agents interacting with websites. This tool spawns persona-based agents to explore web applications, logs their interactions, and evaluates how "human-like" their behavior is.
 
@@ -55,4 +55,4 @@ poetry run python scripts/logs_to_markdown.py logs/<timestamp_directory>
 - `scripts/`: Executable scripts for running simulations and evaluations.
 - `logs/`: JSON logs of agent sessions.
 - `report_data/`: Generated evaluation reports and CSVs.
-- `notebooks/`: Jupyter notebooks for analysis.
+
