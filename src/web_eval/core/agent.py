@@ -8,13 +8,22 @@ from rich.table import Table
 from .computer import PlaywrightComputer, EnvState
 from web_eval.models.personas import ContextOfVisit, Persona
 
+gemini_retry_config = types.HttpOptions(  
+        retry_options=types.HttpRetryOptions(
+        attempts=10,         
+        initial_delay=2.0,    
+        max_delay=120.0,     
+        http_status_codes=[408, 429, 500, 502, 503, 504]  
+    )  
+)
+
 class BrowserAgent:
     def __init__(self, computer: PlaywrightComputer, objective: str, persona: Persona, log_path: str, feedback_questions: list[str] = None):
         self.computer = computer
         self.objective = objective
         self.log_path = log_path
         self.feedback_questions = feedback_questions or []
-        self.client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+        self.client = genai.Client(api_key=os.environ["GEMINI_API_KEY"], http_options=gemini_retry_config)
         self.prompt = self._build_prompt_block(persona)
         self.history = [
             types.Content(role="user", parts=[

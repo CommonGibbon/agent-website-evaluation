@@ -6,7 +6,8 @@ from collections import defaultdict
 from google import genai
 
 from web_eval.evaluation.loader import EvalCase
-from web_eval.models.metrics import MetricConfig
+from web_eval.models.metrics import MetricConfig, OutputType
+from web_eval.core.agent import gemini_retry_config
 from rich.progress import Progress
 
 def _evaluate_contrastive_match(actual_output: str, profile_a: str, profile_b: str, criteria_name: str) -> str:
@@ -16,7 +17,7 @@ def _evaluate_contrastive_match(actual_output: str, profile_a: str, profile_b: s
     Asks the LLM to determine which profile best matches the output based on the given criteria.
     Returns 'A' or 'B'.
     """
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"], http_options=gemini_retry_config)
     
     prompt = f"""
     You are an expert behavioral analyst.
@@ -110,9 +111,11 @@ def run_metric_eval(cases: List[EvalCase], config: MetricConfig) -> Dict[str, fl
     # Pre-compute target data
     target_data = {}
     for case in cases:
-        actual_output = "\n".join(case.log_data.get('action_list', []))
-        for feedback in case.log_data.get('feedback', []):
-            actual_output += f"\nQ: {feedback['question']}\nA: {feedback['answer']}"
+        if config.output_type == OutputType.ACTIONS:
+            actual_output = "\n".join(case.log_data.get('action_list', []))
+        else:
+            feedback_list = case.log_data.get('feedback', [])
+            actual_output = "\n\n".join([f"Q: {item['question']}\nA: {item['answer']}" for item in feedback_list])
         
         target_data[case.persona.id] = {
             "actual_output": actual_output,
