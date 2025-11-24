@@ -1,4 +1,4 @@
-from persona_models import ContextOfVisit, Persona, DeviceType, TimePressure
+from web_eval.models.personas import ContextOfVisit, Persona, DeviceType, TimePressure
 
 # --- SARAH KIM --- 
 SARAH_KIM_CONTEXT = ContextOfVisit(

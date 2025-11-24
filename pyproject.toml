@@ -33,6 +33,6 @@ where = ["src"]
 
 [tool.poetry]
 packages = [
-  { include = "web-eval", from = "src" },
+  { include = "web_eval", from = "src" },
 ]
 

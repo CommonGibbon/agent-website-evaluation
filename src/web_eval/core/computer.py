@@ -5,7 +5,7 @@ from typing import Literal, Optional
 import playwright.sync_api
 from playwright.sync_api import sync_playwright
 import pydantic
-from persona_models import DeviceType
+from web_eval.models.personas import DeviceType
 
 class EnvState(pydantic.BaseModel):
     screenshot: bytes

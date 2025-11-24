@@ -1,10 +1,10 @@
 import os
 import json
 from datetime import datetime
-from computer import PlaywrightComputer
-from agent import BrowserAgent
-from personas import persona_registry
-from feedback_questions import feedback_questions
+from web_eval.core.computer import PlaywrightComputer
+from web_eval.core.agent import BrowserAgent
+from web_eval.config.personas import persona_registry
+from web_eval.config.questions import feedback_questions
 
 from dotenv import load_dotenv
 load_dotenv()

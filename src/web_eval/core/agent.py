@@ -5,8 +5,8 @@ from google import genai
 from google.genai import types
 from rich.console import Console
 from rich.table import Table
-from computer import PlaywrightComputer, EnvState
-from persona_models import ContextOfVisit, Persona
+from .computer import PlaywrightComputer, EnvState
+from web_eval.models.personas import ContextOfVisit, Persona
 
 class BrowserAgent:
     def __init__(self, computer: PlaywrightComputer, objective: str, persona: Persona, log_path: str, feedback_questions: list[str] = None):

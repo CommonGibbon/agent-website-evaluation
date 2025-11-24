@@ -1,6 +1,6 @@
 import sys
-from eval_loader import load_eval_cases
-from eval_metrics import psychographics_match, eval_framework_match, context_match
+from web_eval.evaluation.loader import load_eval_cases
+from web_eval.evaluation.metrics import psychographics_match, eval_framework_match, context_match
 from rich.console import Console
 from rich.table import Table
 

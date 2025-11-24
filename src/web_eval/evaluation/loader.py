@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
-from persona_models import Persona
-from personas import persona_registry
+from web_eval.models.personas import Persona
+from web_eval.config.personas import persona_registry
 
 @dataclass
 class EvalCase:

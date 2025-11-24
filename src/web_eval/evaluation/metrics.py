@@ -1,8 +1,8 @@
 from typing import List, Dict, Any, Tuple
 import os
 from google import genai
-from eval_loader import EvalCase, load_eval_cases
-from persona_models import ContextOfVisit, Persona
+from web_eval.evaluation.loader import EvalCase, load_eval_cases
+from web_eval.models.personas import ContextOfVisit, Persona
 import random
 from typing import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
