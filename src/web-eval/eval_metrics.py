@@ -1,11 +1,16 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 import os
 from google import genai
 from eval_loader import EvalCase, load_eval_cases
 from persona_models import ContextOfVisit, Persona
 import random
 from typing import Callable
-
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import defaultdict
+try:
+    from rich.progress import Progress
+except ImportError:
+    Progress = None
 
 def _evaluate_contrastive_match(actual_output: str, profile_a: str, profile_b: str, criteria_name: str) -> str:
     """
@@ -41,19 +46,59 @@ def _evaluate_contrastive_match(actual_output: str, profile_a: str, profile_b: s
     Respond ONLY with the single character 'A' or 'B'.
     """
     
-    response = client.models.generate_content(
-        model='gemini-2.5-flash', 
-        contents=prompt
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.5-flash', 
+            contents=prompt
+        )
+        
+        answer = response.text.strip().upper()
+        # Basic cleanup if the model is chatty (e.g. "Answer: A")
+        if "A" in answer and "B" not in answer:
+            return "A"
+        if "B" in answer and "A" not in answer:
+            return "B"
+        
+        return answer if answer in ["A", "B"] else "A" # Default fallback if unclear
+    except Exception as e:
+        print(f"Error in LLM call: {e}")
+        return "A" # Fallback on error
+
+
+def _process_single_comparison(
+    target_id: str,
+    actual_output: str,
+    target_profile: str,
+    distractor_case: EvalCase,
+    profile_builder: Callable[[Persona], str],
+    metric_name: str
+) -> Tuple[str, bool, str]:
+    """
+    Helper function to run a single comparison.
+    Returns (target_id, is_correct, distractor_id).
+    """
+    distractor_profile = profile_builder(distractor_case.persona)
+    
+    # Randomize order
+    is_target_a = random.choice([True, False])
+    
+    if is_target_a:
+        profile_a = target_profile
+        profile_b = distractor_profile
+        correct_option = "A"
+    else:
+        profile_a = distractor_profile
+        profile_b = target_profile
+        correct_option = "B"
+        
+    choice = _evaluate_contrastive_match(
+        actual_output=actual_output,
+        profile_a=profile_a,
+        profile_b=profile_b,
+        criteria_name=metric_name
     )
     
-    answer = response.text.strip().upper()
-    # Basic cleanup if the model is chatty (e.g. "Answer: A")
-    if "A" in answer and "B" not in answer:
-        return "A"
-    if "B" in answer and "A" not in answer:
-        return "B"
-    
-    return answer if answer in ["A", "B"] else "A" # Default fallback if unclear
+    return target_id, (choice == correct_option), distractor_case.persona.id
 
 
 def run_contrastive_eval_loop(
@@ -69,54 +114,82 @@ def run_contrastive_eval_loop(
     scores = {}
     print(f"\n--- Running {metric_name} Evaluation ---")
     
-    for target_case in cases:
-        correct_matches = 0
-        comparisons = 0
-        
-        # Construct Actual Output
-        actual_output = "\n".join(target_case.log_data.get('action_list', []))
-        for feedback in target_case.log_data.get('feedback', []):
+    # Pre-compute target data
+    target_data = {}
+    for case in cases:
+        actual_output = "\n".join(case.log_data.get('action_list', []))
+        for feedback in case.log_data.get('feedback', []):
              actual_output += f"\nQ: {feedback['question']}\nA: {feedback['answer']}"
         
-        actual_output = actual_output
+        target_data[case.persona.id] = {
+            "actual_output": actual_output,
+            "profile": profile_builder(case.persona)
+        }
         
-        target_profile = profile_builder(target_case.persona)
+    results_agg = defaultdict(lambda: {"correct": 0, "total": 0})
+    
+    # Create tasks
+    tasks = []
+    for target_case in cases:
+        t_id = target_case.persona.id
+        t_data = target_data[t_id]
         
         for distractor_case in cases:
-            if distractor_case.persona.id == target_case.persona.id:
+            if distractor_case.persona.id == t_id:
                 continue
                 
-            distractor_profile = profile_builder(distractor_case.persona)
-            
-            # Randomize order
-            is_target_a = random.choice([True, False])
-            
-            if is_target_a:
-                profile_a = target_profile
-                profile_b = distractor_profile
-                correct_option = "A"
-            else:
-                profile_a = distractor_profile
-                profile_b = target_profile
-                correct_option = "B"
-                
-            choice = _evaluate_contrastive_match(
-                actual_output=actual_output,
-                profile_a=profile_a,
-                profile_b=profile_b,
-                criteria_name=metric_name
-            )
-            
-            if choice == correct_option:
-                correct_matches += 1
-            comparisons += 1
-            
-            print(f"  [{metric_name}] Target: {target_case.persona.id} | Distractor: {distractor_case.persona.id} | Result: {'PASS' if choice == correct_option else 'FAIL'}")
+            tasks.append({
+                "target_id": t_id,
+                "actual_output": t_data["actual_output"],
+                "target_profile": t_data["profile"],
+                "distractor_case": distractor_case,
+                "profile_builder": profile_builder,
+                "metric_name": metric_name
+            })
 
-        if comparisons > 0:
-            scores[target_case.persona.id] = round(correct_matches / comparisons, 2)
+    # Execute in parallel
+    # Using max_workers=10 to respect potential rate limits, adjust as needed
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [
+            executor.submit(_process_single_comparison, **task) 
+            for task in tasks
+        ]
+        
+        if Progress:
+            with Progress() as progress:
+                task_id = progress.add_task(f"[cyan]{metric_name}...", total=len(futures))
+                
+                for future in as_completed(futures):
+                    try:
+                        t_id, is_correct, d_id = future.result()
+                        results_agg[t_id]["total"] += 1
+                        if is_correct:
+                            results_agg[t_id]["correct"] += 1
+                        progress.advance(task_id)
+                    except Exception as e:
+                        print(f"Error processing comparison: {e}")
+                        progress.advance(task_id)
         else:
-            scores[target_case.persona.id] = 0.0
+            # Fallback without progress bar
+            completed = 0
+            for future in as_completed(futures):
+                try:
+                    t_id, is_correct, d_id = future.result()
+                    results_agg[t_id]["total"] += 1
+                    if is_correct:
+                        results_agg[t_id]["correct"] += 1
+                    completed += 1
+                    print(f"Completed {completed}/{len(tasks)} comparisons", end='\r')
+                except Exception as e:
+                    print(f"Error processing comparison: {e}")
+            print()
+
+    # Calculate scores
+    for t_id, stats in results_agg.items():
+        if stats["total"] > 0:
+            scores[t_id] = round(stats["correct"] / stats["total"], 2)
+        else:
+            scores[t_id] = 0.0
             
     return scores
 
