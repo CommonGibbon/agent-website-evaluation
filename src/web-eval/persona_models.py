@@ -7,6 +7,11 @@ class DeviceType(str, Enum):
     MOBILE = "mobile"
     DESKTOP = "desktop"
 
+class TimePressure(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
 @dataclass(frozen=True)
 class ContextOfVisit:
     """
@@ -18,7 +23,7 @@ class ContextOfVisit:
     scenario: str
     entry_point: str
     device: DeviceType
-    time_pressure: str
+    time_pressure: TimePressure
     emotional_state: str
 
 @dataclass(frozen=True)

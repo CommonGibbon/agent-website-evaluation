@@ -9,11 +9,11 @@ from computer import PlaywrightComputer, EnvState
 from persona_models import ContextOfVisit, Persona
 
 class BrowserAgent:
-    def __init__(self, computer: PlaywrightComputer, objective: str, persona: Persona, log_path: str, eval_questions: list[str] = None):
+    def __init__(self, computer: PlaywrightComputer, objective: str, persona: Persona, log_path: str, feedback_questions: list[str] = None):
         self.computer = computer
         self.objective = objective
         self.log_path = log_path
-        self.eval_questions = eval_questions or []
+        self.feedback_questions = feedback_questions or []
         self.client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
         self.prompt = self._build_prompt_block(persona)
         self.history = [
@@ -30,8 +30,8 @@ class BrowserAgent:
         prompt = f"""
         {persona.build_prompt_block()} \n
         You are currently {persona.context_of_visit.scenario} and you have arrived at this website through {persona.context_of_visit.entry_point}.
-        You are feeling {persona.context_of_visit.emotional_state}, with {persona.context_of_visit.time_pressure} time pressure.
-        You are using a {persona.context_of_visit.device} device.
+        You are feeling {persona.context_of_visit.emotional_state}, with {persona.context_of_visit.time_pressure.value} time pressure.
+        You are using a {persona.context_of_visit.device.value} device.
         Your ultimate objective is to {self.objective}
         """
 
@@ -83,28 +83,26 @@ class BrowserAgent:
                     types.Part(function_response=fr) for fr in function_responses
                 ]))
             
-            # 5. Run Evaluation
-            self._run_evaluation()
+            # 5. Generate Feedback
+            self._generate_feedback()
         finally:
             self._save_logs()
 
-    def _run_evaluation(self):
+    def _generate_feedback(self):
         """
-        Runs the post-task evaluation by asking the agent the configured questions.
+        Runs the post-task feedback generation by asking the agent the configured questions.
         """
-        if not self.eval_questions:
+        if not self.feedback_questions:
             return
-
-        self.action_log.append("[System]: Starting Post-Task Evaluation")
         
-        for question in self.eval_questions:
+        for question in self.feedback_questions:
             # Add the question to the history as a user prompt
             question_content = types.Content(role="user", parts=[
-                types.Part(text=f"EVALUATION PHASE: {question}")
+                types.Part(text=f"FEEDBACK PHASE: {question}")
             ])
             self.history.append(question_content)
             
-            # Create filtered history for evaluation (text only, no tools/images)
+            # Create filtered history for feedback (text only, no tools/images)
             filtered_history = []
             for content in self.history:
                 filtered_parts = []
@@ -120,7 +118,7 @@ class BrowserAgent:
                 model='gemini-2.5-flash', 
                 contents=filtered_history
             )
-            
+            # could use a structured response here to increase answer split reliability, but I haven't had issues so far
             answer_candidate = response.candidates[0]
             answer_text = "".join([p.text for p in answer_candidate.content.parts if p.text])
             
@@ -132,8 +130,6 @@ class BrowserAgent:
             
             # Add answer to history to maintain context
             self.history.append(answer_candidate.content)
-            self.action_log.append(f"[Evaluation Q]: {question}")
-            self.action_log.append(f"[Evaluation A]: {answer_text}")
 
     def _save_logs(self):
         duration = time.time() - self.start_time
