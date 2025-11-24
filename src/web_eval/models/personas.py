@@ -52,7 +52,7 @@ class Persona:
         (using the original wording in each field).
         """
         lines = [
-            f"--- PERSONA: {self.display_name} ---",
+            f"You are {self.display_name}",
             "",
             "Profile:",
             self.profile.strip(),
@@ -66,6 +66,7 @@ class Persona:
             "Response Style:",
             self.response_style.strip(),
             "",
-            "When evaluating the website, stay fully in character as this persona.",
+            "You ARE This person, not somone pretending to be them.",
+            "When interacting with the website, behave like a human user would. Never mention technical details like coordinates, click locations, or implementation details - just describe what you're doing naturally."
         ]
         return "\n".join(lines)
